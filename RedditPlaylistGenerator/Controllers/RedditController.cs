@@ -25,7 +25,7 @@ namespace RedditPlaylistGenerator.Controllers
         {
             var songNames = await _redditService.GetSongNames(body.redditUrl);
             
-            await _spotifyService.GeneratePlaylist(body.code, body.codeVerifier, songNames);
+            await _spotifyService.GeneratePlaylist(body.code, body.codeVerifier, songNames, body.playlistName);
 
             return "Hello world";
 

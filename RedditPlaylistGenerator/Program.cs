@@ -29,6 +29,12 @@ builder.Services.AddHttpClient<RedditService>(client =>
 
 }).AddHttpMessageHandler<RedditAuthenticationHandler>();
 
+builder.Services.AddHttpClient<SpotifyService>("SpotifyClient", client =>
+{
+    client.BaseAddress = new Uri("https://api.spotify.com/v1/");
+
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

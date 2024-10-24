@@ -11,7 +11,17 @@ namespace RedditPlaylistGenerator.Services
 
         public async Task<IList<string>> GetSongNames(string articleUrl)
         {
-            var commentTree = await GetCommentTree("1g0c1pc");
+            //Extract the post id from the url
+            var match = Regex.Match(articleUrl, @"reddit.com/r/[^/]+/comments/(?<id>[^/]+)/.*");
+
+            if (!match.Success)
+            {
+                throw new ArgumentException("Invalid reddit url.");
+            }
+
+            var postId = match.Groups["id"].Value;
+
+            var commentTree = await GetCommentTree(postId);
             var comments = GetComments(commentTree);
 
             return ExtractSongNames(comments);
@@ -65,11 +75,13 @@ namespace RedditPlaylistGenerator.Services
 
             foreach (var comment in comments)
             {
-                var matches = Regex.Matches(comment, @"(.+)(\sby\s|\s*?-\s*?|,\s)(.+)");
+                var matches = Regex.Matches(comment, @"(.+)( +by +|- *|, *)(.+)");
 
                 foreach (Match match in matches)
                 {
-                    songNames.Add(match.Value);
+                    var formattedSongName = $"{match.Groups[1].Value.Trim()} - {match.Groups[3].Value}";
+
+                    songNames.Add(formattedSongName);
                 }
             }
 
