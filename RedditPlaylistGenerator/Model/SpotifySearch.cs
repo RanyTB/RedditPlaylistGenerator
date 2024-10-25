@@ -1,6 +1,4 @@
-﻿using System.Text.Json.Serialization;
-
-namespace RedditPlaylistGenerator.Model
+﻿namespace RedditPlaylistGenerator.Model
 {
     public record SpotifySearch
     {

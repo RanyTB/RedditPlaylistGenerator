@@ -1,70 +1,36 @@
-﻿using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using RedditPlaylistGenerator.Model;
 using RedditPlaylistGenerator.Options;
+using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
 namespace RedditPlaylistGenerator.Services
 {
     public class SpotifyService
     {
         private readonly ILogger _logger;
-        private readonly HttpClient _client;
         private readonly HttpClient _spotifyClient;
         private readonly IOptions<SpotifyOptions> _spotifyOptions;
-        string? accessToken;
 
-        public SpotifyService(HttpClient client, IHttpClientFactory clientFactory, IOptions<SpotifyOptions> spotifyOptions)
+
+        public SpotifyService(ILogger<SpotifySearch> logger, IHttpClientFactory clientFactory, IOptions<SpotifyOptions> spotifyOptions)
         {
-            _client = client;
+            _logger = logger;
             _spotifyClient = clientFactory.CreateClient("SpotifyClient");
             _spotifyOptions = spotifyOptions;
         }
 
-        public async Task<string> GeneratePlaylist(string code, string codeVerifier, IList<string> songNames, string playlistName)
+        public async Task<string> GeneratePlaylist(string accessToken, SongNamesResult songNamesResult)
         {
-            accessToken = await GetAccessToken(code, codeVerifier);
-            var songUris = await GetSongUris(songNames);
+            _spotifyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            var songUris = await GetSongUris(songNamesResult.SongNames);
+            var userId = await GetUserId();
+            var playlistId = await CreatePlaylist($"Reddit: {songNamesResult.PostTitle}", userId);
+            await AddSongsToPlaylist(songUris, playlistId.Id);
 
-            //Search for every songName and extract the first song from the result (tracks.items[0].uri)
-            //Create new playlist
-            //Add the uri's to the playlist. The endpoint supports maximum 100 songs at a time, so split request if more than 100 results
-
-
-            return "hello world";
-
-        }
-
-
-        private async Task<string> GetAccessToken(string code, string codeVerifier)
-        {
-
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://accounts.spotify.com/api/token");
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["client_id"] = _spotifyOptions.Value.ClientId,
-                ["grant_type"] = "authorization_code",
-                ["code"] = code,
-                ["redirect_uri"] = "http://localhost:5173",
-                ["code_verifier"] = codeVerifier
-            });
-
-            request.Content = content;
-            request.Content.Headers.Remove("Content-Type");
-            request.Content.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
-
-            var res = await _client.SendAsync(request);
-
-            res.EnsureSuccessStatusCode();
-
-            var token = await res.Content.ReadFromJsonAsync<SpotifyAccessToken>();
-
-            if (token == null)
-            {
-                throw new HttpRequestException("Failed to retrieve spotify access token.");
-            }
-
-            return token.AccessToken;
+            return playlistId.ExternalUrls.Spotify;
         }
 
         private async Task<IList<string>> GetSongUris(IList<string> songNames)
@@ -72,18 +38,24 @@ namespace RedditPlaylistGenerator.Services
             var songUriTasks = songNames
                 .Select(GetSongUri);
 
-            var results = await Task.WhenAll(songUriTasks);
+            try
+            {
+                var songUris = await Task.WhenAll(songUriTasks);
+                return songUris.Where(s => s != null).Cast<string>().ToList();
+            }
+            catch
+            {
+                throw new Exception("Failed to retrieve song uris.");
+            }
 
-
-            var songUris = results.ToList().Where(s => s != null).ToList();
-
-            return songUris;
         }
 
         private async Task<string?> GetSongUri(string songName)
         {
-            
-            _spotifyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            Debug.WriteLine($"Searching for song: {songName}");
+
+
 
             var encodedSongName = Uri.EscapeDataString(songName);
 
@@ -99,14 +71,16 @@ namespace RedditPlaylistGenerator.Services
 
             if (!res.IsSuccessStatusCode)
             {
-                throw new Exception("Failed to search for song.");
+                Debug.WriteLine($"Failed to search for song: {songName}");
+                return null;
             }
 
             var responseContent = await res.Content.ReadFromJsonAsync<SpotifySearch>();
 
             if (responseContent == null)
             {
-                throw new Exception("Failed to read response content.");
+                Debug.WriteLine("Failed to read response content.");
+                return null;
             }
 
             if (!responseContent.Tracks.Items.Any())
@@ -117,6 +91,70 @@ namespace RedditPlaylistGenerator.Services
             return responseContent.Tracks.Items[0].Uri;
         }
 
+        private async Task<string> GetUserId()
+        {
+            var res = await _spotifyClient.GetAsync("me");
 
+            res.EnsureSuccessStatusCode();
+
+            var responseContent = await res.Content.ReadFromJsonAsync<SpotifyUser>();
+
+            if (responseContent == null)
+            {
+                throw new HttpRequestException("Failed to retrieve spotify user id.");
+            }
+
+            return responseContent.Id;
+        }
+
+        private async Task<SpotifyPlaylist> CreatePlaylist(string playlistName, string userId)
+        {
+            var res = await _spotifyClient.PostAsync($"users/{userId}/playlists",
+                new StringContent(
+                    JsonSerializer.Serialize(new { name = playlistName, description = "Generated by RedditPlaylistGenerator" }),
+                    Encoding.UTF8,
+                    "application/json"
+                    )
+            );
+
+            res.EnsureSuccessStatusCode();
+
+            var responseContent = await res.Content.ReadFromJsonAsync<SpotifyPlaylist>();
+
+            if (responseContent == null)
+            {
+                throw new HttpRequestException("Failed to create spotify playlist.");
+            }
+
+            return responseContent;
+        }
+
+        private async Task AddSongsToPlaylist(IList<string> songUris, string id)
+        {
+            var tasks = songUris.Chunk(100).ToList().Select(async chunk =>
+            {
+                var test = new { uris = chunk };
+
+
+                var res = await _spotifyClient.PostAsync($"playlists/{id}/tracks",
+                          new StringContent(
+                              JsonSerializer.Serialize(new { uris = chunk }),
+                              Encoding.UTF8,
+                              "application/json"
+                              )
+                      );
+
+                res.EnsureSuccessStatusCode();
+            });
+
+            try
+            {
+                await Task.WhenAll(tasks);
+            }
+            catch
+            {
+                throw new HttpRequestException("Failed to add songs to playlist.");
+            }
+        }
     }
 }

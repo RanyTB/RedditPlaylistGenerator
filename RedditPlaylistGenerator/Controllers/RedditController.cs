@@ -23,11 +23,11 @@ namespace RedditPlaylistGenerator.Controllers
         [HttpPost]
         public async Task<string> GeneratePlaylistFromRedditUrl([FromBody] GeneratePlaylistRequestBody body)
         {
-            var songNames = await _redditService.GetSongNames(body.redditUrl);
-            
-            await _spotifyService.GeneratePlaylist(body.code, body.codeVerifier, songNames, body.playlistName);
+            var songNamesResult = await _redditService.GetSongNames(body.redditUrl);
 
-            return "Hello world";
+            var playlistLink = await _spotifyService.GeneratePlaylist(body.accessToken, songNamesResult);
+
+            return playlistLink;
 
         }
     }

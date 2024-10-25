@@ -1,7 +1,4 @@
 ﻿using RedditPlaylistGenerator.Model;
-using System.Net.Http.Headers;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace RedditPlaylistGenerator.Services
@@ -9,10 +6,9 @@ namespace RedditPlaylistGenerator.Services
     public class RedditService(HttpClient _client)
     {
 
-        public async Task<IList<string>> GetSongNames(string articleUrl)
+        public async Task<SongNamesResult> GetSongNames(string articleUrl)
         {
-            //Extract the post id from the url
-            var match = Regex.Match(articleUrl, @"reddit.com/r/[^/]+/comments/(?<id>[^/]+)/.*");
+            var match = Regex.Match(articleUrl, @"reddit.com/r/[^/]+/comments/(?<id>[^/]+)");
 
             if (!match.Success)
             {
@@ -24,7 +20,14 @@ namespace RedditPlaylistGenerator.Services
             var commentTree = await GetCommentTree(postId);
             var comments = GetComments(commentTree);
 
-            return ExtractSongNames(comments);
+            var postTitle = GetPostTitle(commentTree);
+            var songNames = ExtractSongNames(comments);
+
+            return new SongNamesResult()
+            {
+                PostTitle = postTitle,
+                SongNames = songNames
+            };
         }
 
 
@@ -43,6 +46,16 @@ namespace RedditPlaylistGenerator.Services
 
             return listings;
 
+        }
+
+        private string? GetPostTitle(IList<RedditListingEntry> listings)
+        {
+            if (listings == null || listings.Count < 1)
+            {
+                throw new ArgumentException("Invalid listings data.");
+            }
+
+            return listings?[0]?.Data?.Children?[0]?.Data?.Title;
         }
 
         public static IList<string> GetComments(IList<RedditListingEntry> listings)
