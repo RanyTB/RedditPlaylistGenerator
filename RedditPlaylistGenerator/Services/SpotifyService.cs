@@ -15,13 +15,12 @@ namespace RedditPlaylistGenerator.Services
         private readonly IOptions<SpotifyOptions> _spotifyOptions;
 
 
-        public SpotifyService(ILogger<SpotifySearch> logger, IHttpClientFactory clientFactory, IOptions<SpotifyOptions> spotifyOptions)
+        public SpotifyService(ILogger<SpotifyService> logger, HttpClient spotifyClient, IOptions<SpotifyOptions> spotifyOptions)
         {
             _logger = logger;
-            _spotifyClient = clientFactory.CreateClient("SpotifyClient");
+            _spotifyClient = spotifyClient;
             _spotifyOptions = spotifyOptions;
         }
-
         public async Task<string> GeneratePlaylist(string accessToken, SongNamesResult songNamesResult)
         {
             _spotifyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);

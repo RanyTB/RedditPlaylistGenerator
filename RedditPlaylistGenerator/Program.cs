@@ -29,7 +29,7 @@ builder.Services.AddHttpClient<RedditService>(client =>
 
 }).AddHttpMessageHandler<RedditAuthenticationHandler>();
 
-builder.Services.AddHttpClient<SpotifyService>("SpotifyClient", client =>
+builder.Services.AddHttpClient<SpotifyService>(client =>
 {
     client.BaseAddress = new Uri("https://api.spotify.com/v1/");
 
