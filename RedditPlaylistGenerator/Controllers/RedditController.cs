@@ -5,7 +5,7 @@ using RedditPlaylistGenerator.Services;
 namespace RedditPlaylistGenerator.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/[controller]")]
     public class RedditController : ControllerBase
     {
 
